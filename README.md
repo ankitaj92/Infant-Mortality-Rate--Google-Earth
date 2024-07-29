@@ -1,1 +1,0 @@
-# Infant-Mortality-Rate--Google-Earth
