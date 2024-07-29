@@ -1,0 +1,217 @@
+#Create the data frame from XML file
+
+#load the data frame called LatLon from data.rda. 
+
+```{r}
+load('data.rda')
+dim(LatLon)
+names(LatLon)
+```
+
+```{r}
+#install.packages('XML')
+library(XML)
+```
+
+```{r}
+CIA_xml_parse <- xmlParse("factbook.xml.gz")
+```
+
+#Use XPath to extract the infant mortality and the CIA country codes from the XML tree
+
+```{r}
+CIA_code_root <- xmlRoot(x=CIA_xml_parse)
+CIA_rootNode <- xmlRoot(x=CIA_code_root)
+CIA_Infant_Mortality_Rate <- xpathSApply(doc=CIA_rootNode,path='//field[@name="Infant mortality rate"]')
+#CIA_Infant_Mortality_Rate
+```
+
+```{r}
+CIA_Infant_Mortality_Rate_Size <- xmlSize(CIA_Infant_Mortality_Rate[[1]])
+
+Infant_Mortality <- c()
+for(i in 1:CIA_Infant_Mortality_Rate_Size) {
+  Infant_Mortality[i] = xmlGetAttr(node=CIA_Infant_Mortality_Rate[[1]][[i]], name="number") 
+  Infant_Mortality = as.numeric(Infant_Mortality[!is.na(Infant_Mortality)])
+}
+Infant_Mortality
+```
+
+```{r}
+Country_Code <- c()
+for(i in 1:CIA_Infant_Mortality_Rate_Size) {
+  Country_Code[i] = xmlGetAttr(node=CIA_Infant_Mortality_Rate[[1]][[i]], name="country")
+  Country_Code = toupper(Country_Code[!is.na(Country_Code)])
+}
+Country_Code
+```
+
+#Create a data frame called IM using this XML file. The data frame should have 2 columns: for Infant Mortality and CIA.Codes.
+
+```{r}
+IM <- data.frame("Infant Mortality" = Infant_Mortality, "CIA.Codes" = Country_Code)
+head(IM)
+```
+
+#Extract the country populations from the same XML document. Create a data frame called Pop using these data.This data frame should also have 2 columns, for Population and CIA.Codes.
+
+```{r}
+CIA_population <- xpathApply(doc = CIA_rootNode,path='//field[@name="Population"]')
+CIA_Population_Size <- xmlSize(CIA_population[[1]]) 
+
+Population <- c()
+for(i in 1:CIA_Population_Size) {
+  Population[i] = xmlGetAttr(node=CIA_population[[1]][[i]], name="number")
+  Population = as.numeric(Population[!is.na(Population)])
+}
+Population
+```
+
+```{r}
+Country_Code <- c()
+for(i in 1:CIA_Population_Size) {
+  Country_Code[i] = xmlGetAttr(node=CIA_population[[1]][[i]], name="country")
+  Country_Code = toupper(Country_Code[!is.na(Country_Code)])
+}
+Country_Code
+```
+
+```{r}
+Pop <- data.frame("Population" = Population, "CIA.Codes" = Country_Code)
+head(Pop)
+```
+#Merge the two data frames to create a data frame called IMPop with 3 columns: IM, Pop, and CIA.Codes
+
+```{r}
+IMPop <- merge(x=IM, y=Pop)
+head(IMPop)
+```
+
+#Now merge IMPop with LatLon to create a data frame called AllData that has 6 columns for Latitude, Longitude, CIA.Codes, Country Name, Population, and Infant Mortality 
+
+```{r}
+AllData <- merge(x=IMPop, y=LatLon)
+head(AllData)
+```
+
+#Create a KML document for google earth visualization. 
+
+```{r}
+makeBaseDocument = function(){
+### This code creates the template for KML document 
+### Your code here
+  xmlDoc = newXMLDoc()
+  xmlRoot = newXMLNode("kml", doc = xmlDoc)
+  xmlDocumentNode = newXMLNode("Document", parent = xmlRoot)
+  newXMLNode(name="name", "Country Facts", parent = xmlDocumentNode)
+  newXMLNode(name="description", "Infant mortality", parent = xmlDocumentNode)
+  xmlLookAtNode = newXMLNode("LookAt", parent = xmlDocumentNode)
+  newNode = newXMLNode(name="Folder",parent = xmlDocumentNode)
+  newXMLNode(name = "Name","CIA Fact Book",parent = newNode)
+  newXMLNode(name="longitude", "-121", parent = xmlLookAtNode)
+  newXMLNode(name="latitude", "43", parent = xmlLookAtNode)
+  newXMLNode(name="altitude", "4100000", parent = xmlLookAtNode)
+  newXMLNode(name="title", "0", parent = xmlLookAtNode)
+  newXMLNode(name="heading", "0", parent = xmlLookAtNode)
+  newXMLNode(name="altitudeMode", "absolute", parent = xmlLookAtNode)
+  return(xmlDoc)
+}
+```
+
+```{r}
+KmlDoc <- makeBaseDocument()
+KmlRoot <- xmlRoot(KmlDoc)
+KmlChildren <- xmlChildren(KmlDoc)
+xmlDocumentNode <- KmlChildren[[1]][[1]]
+KmlLookAtNode <- KmlChildren[[1]][[2]]
+KmlDoc
+```
+
+```{r}
+addPlacemark = function(lon, lat, ctryCode, ctryName, pop, infM, parent, inf1, pop1, style = FALSE) {
+  pm = newXMLNode("Placemark", newXMLNode("name", ctryName), attrs = c(id = ctryCode),parent = parent)
+  newXMLNode("description", paste(ctryName, "\n Population: ", pop,"\n Infant Mortality: ", infM, sep =""),parent = pm)
+
+  point=newXMLNode("Point", newXMLNode("coordinates", paste(lon, ", ", lat, ", ", 0, sep="")), parent=pm)
+
+  if(style) newXMLNode("styleUrl", paste("#YOR", inf1, "-", pop1, sep = ''), parent = pm)
+}
+
+for(i in 1:(dim(AllData)[1])) {
+  addPlacemark(lon=AllData$Longitude[[i]],lat=AllData$Latitude[[i]],ctryCode=AllData$CIA.Codes[[i]], ctryName=AllData$Country.Name[[i]], 
+    pop=AllData$Population[[i]], infM=AllData$Infant.Mortality[[i]], parent=xmlDocumentNode)
+}
+
+KmlDoc
+
+```
+
+#Use the two functions that to create the KML document and save it as 'Part2.kml'. open it in Google Earth. It #should have pushpins for all the countries.  
+
+
+```{r}
+saveXML(doc=KmlDoc, file="Part2.kml")
+```
+
+#Add Style to the KML
+
+#Start fresh with a new KML document, by calling makeBaseDocument()
+
+```{r}
+KmlDoc2 = makeBaseDocument()
+KmlRoot2 <- xmlRoot(KmlDoc2)
+KmlChildren2 <- xmlChildren(KmlDoc2)
+xmlDocumentNode2 <- KmlChildren2[[1]][[1]]
+kmlLookAtNode2 <- KmlChildren2[[1]][[2]]
+
+KmlDoc2
+```
+```{r}
+infCut = cut(AllData$Infant.Mortality, breaks = c(0, 10, 25, 50, 75, 200))
+infCut = as.numeric(infCut)
+popCut = cut(log(AllData$Population), breaks = 5)
+popCut = as.numeric(popCut)
+```
+
+#add styles and placemarks to KmlDoc2.
+
+```{r}
+scale = c(0.2, 1, 2.5, 3.5, 4.5)
+colors = c("blue","green","yellow","orange","red")
+```
+
+```{r}
+addStyle = function(col1, pop1, parent, DirBase, scales = scale)
+{
+  new_Col = colors[col1]
+  st = newXMLNode("Style", attrs = c("id" = paste("YOR", col1, "-", pop1, sep="")), parent = parent)
+  newXMLNode("IconStyle", 
+             newXMLNode("scale", scales[pop1]), 
+             newXMLNode("Icon", paste(DirBase, "color_label_circle_", colors[col1], ".png", sep ="")), parent = st)
+}
+
+root2 = xmlRoot(KmlDoc2)
+DocNode = root2[["Document"]]
+```
+
+```{r}
+for (k in 1:5)
+{
+  for (j in 1:5)
+  {
+    addStyle(j, k, DocNode, '/Users/aarthi/Downloads/color_label_circle/',scale)
+  }
+}
+
+
+for(i in 1:(dim(AllData)[1])) {
+  addPlacemark(lon=AllData$Longitude[[i]],lat=AllData$Latitude[[i]], ctryCode=AllData$CIA.Codes[[i]], ctryName=AllData$Country.Name[[i]],pop=AllData$Population[[i]], infM=AllData$Infant.Mortality[[i]],parent=xmlDocumentNode2, inf1=infCut[[i]], pop1=popCut[[i]], style=TRUE)
+}
+#KmlDoc2
+```
+
+#Finally, save your KML document, call it output.kml and open it in Google Earth to verify that it works.  
+
+```{r}
+saveXML(doc=KmlDoc2, file="output.kml")
+```
